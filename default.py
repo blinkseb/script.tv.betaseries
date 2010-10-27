@@ -11,10 +11,31 @@ __date__         = "25-10-2010"
 __version__      = "0.1"
 __useragent__    = "BetaSeries.com XBMC addon"
 
+__betaseries_url__ = "http://api.betaseries.com/"
+__key__            = "ed768c9dc6d3"
+
 from socket import *
 import json
-import urllib
+import urllib2
 import socket
+import sys
+
+def formatUrl(url, params=None):
+    base = __betaseries_url__ + url + ".json?key=" + __key__
+    if params is None:
+        return base
+    else:
+        lst = ""
+        for (key, value) in params.items():
+            lst += "&" + str(key) + "=" + str(value)
+        return base + lst
+        
+def loadUrl(url):
+    request = urllib2.Request(url)
+    print "trying to load url: " + request.get_full_url()
+    opener = urllib2.build_opener()
+    request.add_header('User-Agent', __useragent__) 
+    return opener.open(request).read()
 
 port = 9090
 
