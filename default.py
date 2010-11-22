@@ -33,6 +33,8 @@ username = "xbmc"
 password = "5a1bc0ed8b9a102fe8754226f62e6c1f"
 __token__ = None
 
+id_action = {}
+
 def formatUrl(url, params=None):
     base = __betaseries_url__ + url + ".json?key=" + __key__
     if not (__token__ is None):
@@ -121,7 +123,7 @@ def processNewTVShow(details):
     showname = getBSTVShowName(details["title"])
     data = json.read(loadUrl(formatUrl("shows/add/" + showname)))
     if (data["root"]["code"] != 1):
-      xbmc.log("Failed to add new tv show to betaserie. Error code %d" % data["root"]["code"], xbmc.LOGERROR)
+      xbmc.log("Failed to add new tv show to betaserie. Error code %s" % data["root"]["code"], xbmc.LOGERROR)
     
 s.connect(("localhost", port))
 
@@ -172,6 +174,22 @@ while (1):
                     id = data[strId]
                 
                 if (content == "tvshow"):
+                  id_action[str(global_id)] = "add_tvshow"
+                  getVideoDetails(content, id)
+                  
+            if (msg == "RemoveVideo") and (data != None):
+                content = None
+                id = None
+                if ("content" in data):
+                  content = data["content"]
+                
+                if (content != None):
+                  strId = content + "id"
+                  if (strId in data):
+                    id = data[strId]
+                
+                if (content == "tvshow"):
+                  id_action[str(global_id)] = "remove_tvshow"
                   getVideoDetails(content, id)
                   
             if (msg == "ApplicationStop"):
@@ -179,7 +197,13 @@ while (1):
                 
     if "result" in js:
         if ("tvshowdetails" in js["result"]):
-          processNewTVShow(js["result"]["tvshowdetails"][0])
+          id = str(js["id"])
+          if (id in id_action):
+            xbmc.log("Found action for id %s: %s" % (id, id_action[id]), xbmc.LOGDEBUG)
+            if (id_action[id] == "add_tvshow"):
+              processNewTVShow(js["result"]["tvshowdetails"][0])
+            elif (id_action[id] == "remove_tvshow"):
+              print ""
 
 s.close();
 unlogUser()
