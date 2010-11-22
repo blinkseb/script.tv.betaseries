@@ -19,9 +19,25 @@ import json
 import urllib2
 import socket
 import sys
+import md5
+import xbmc
+
+import pprint
+import difflib
+
+port = 9090
+global_id = 1;
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+username = "xbmc"
+password = "5a1bc0ed8b9a102fe8754226f62e6c1f"
+__token__ = None
 
 def formatUrl(url, params=None):
     base = __betaseries_url__ + url + ".json?key=" + __key__
+    if not (__token__ is None):
+      base += "&token=" + __token__
+      
     if params is None:
         return base
     else:
@@ -32,38 +48,138 @@ def formatUrl(url, params=None):
         
 def loadUrl(url):
     request = urllib2.Request(url)
-    print "trying to load url: " + request.get_full_url()
+    xbmc.log("trying to load url: " + request.get_full_url(), xbmc.LOGDEBUG)
     opener = urllib2.build_opener()
-    request.add_header('User-Agent', __useragent__) 
+    request.add_header('User-Agent', __useragent__)
     return opener.open(request).read()
+    
+def logUser():
+    global __token__
+    data = json.read(loadUrl(formatUrl("members/auth", {"login": username, "password": password})))
+    if (data["root"]["code"] == 1):
+        __token__ = data["root"]["member"]["token"]
+        xbmc.log("Successfully logged in", xbmc.LOGDEBUG)
+    else:
+      xbmc.log("Failed to login. Check your login/pwd", xbmc.LOGERROR);
+      
+def unlogUser():
+    global __token__
+    loadUrl(formatUrl("members/destroy"))
+    __token__ = None
+    
+def getBSTVShowName(name):
+    xbmc.log("trying to get BetaSeries tvshow name for %s" % name, xbmc.LOGDEBUG)
+    js = json.read(loadUrl(formatUrl("shows/search", {"title": name})))
+    shownames = {}    
+    for (key, value) in js["root"]["shows"].items():
+      shownames[ value["title"] ] = value["url"]
+      
+    res = difflib.get_close_matches(name, shownames.keys(), 1)
+    if res:
+      xbmc.log("Closest show name: %s with url: %s" % (res[0], shownames[res[0]]), xbmc.LOGDEBUG)
+      return shownames[res[0]]
+      
+    return ""
 
-port = 9090
-
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+def formatJSON(method, id, params):
+    request = {}
+    request["jsonrpc"] = "2.0"
+    request["id"] = id
+    request["method"] = method
+    request["params"] = params
+    return json.write(request)
+    
+def getVideoDetails(content, id, _fields = []):
+    global global_id
+    global s
+    fields = []
+    if (not _fields):
+      fields = ["title"]
+    else:
+      fields = _fields
+      
+    method = "VideoLibrary.Get"
+    if (content == "tvshow"):
+      method += "TVShowDetails"
+    elif (content == "episode"):
+      method += "EpisodeDetails"
+    elif (content == "movie"):
+      method += "MovieDetails"
+    elif (content == "musicvideo"):
+      method += "MusicVideoDetails"
+    
+    params = {}
+    params["fields"] = fields;
+    params[content + "id"] = id;
+      
+    request = formatJSON(method, global_id, params)
+    global_id += 1;
+    s.send(request)
+    
+def processNewTVShow(details):
+    xbmc.log("We have a new TVShow: %s" % details["title"], xbmc.LOGDEBUG)
+    showname = getBSTVShowName(details["title"])
+    data = json.read(loadUrl(formatUrl("shows/add/" + showname)))
+    if (data["root"]["code"] != 1):
+      xbmc.log("Failed to add new tv show to betaserie. Error code %d" % data["root"]["code"], xbmc.LOGERROR)
+    
 s.connect(("localhost", port))
 
 postdata = '{"jsonrpc": "2.0", "method": "JSONRPC.Version", "id": "1"}'
 s.send(postdata)
 respdata = json.read(s.recv(4096))
 jsonrpc_version = respdata["result"]["version"]
+print "BetaSeries.com addon initialized; using jsonrpc version %d" % jsonrpc_version
 
-postdata = '{"jsonrpc": "2.0", "method": "JSONRPC.SetAnnouncementFlags", "params": {"playback": 1}, "id": "1"}'
+postdata = '{"jsonrpc": "2.0", "method": "JSONRPC.SetAnnouncementFlags", "params": {"system": true, "library": true}, "id": "1"}'
 s.send(postdata)
-s.recv(4096)
 
-postdata = '{"jsonrpc": "2.0", "method": "JSONRPC.SetAnnouncementFlags", "params": {"gui": 1}, "id": "1"}'
-s.send(postdata)
-s.recv(4096)
+logUser()
 
 while (1):
-    data = s.recv(4096)
-    print "got new json data: " + data
+    _data = s.recv(4096)
+    if len(_data) == 4096:
+        s.setblocking(0)
+        while(1):
+            try:
+                buf = s.recv(4096)
+                _data += buf
+                if len(buf) == 4096:
+                    continue
+            except socket.error:
+                s.setblocking(1)
+                break;
+            
+    xbmc.log("got new json data: " + _data, xbmc.LOGDEBUG)
     
-    js = json.read(data)
+    js = json.read(_data)
     if "method" in js:
         if (js["method"] == "Announcement") and (js["params"]["sender"] == "xbmc"):
-            if (js["params"]["message"] == "ApplicationStop"):
+            msg = js["params"]["message"]
+            data = None
+            if "data" in js["params"]:
+                data = js["params"]["data"]
+                
+            if (msg == "UpdateVideo") and (data != None):
+                content = None
+                id = None
+                if ("content" in data):
+                  content = data["content"]
+                
+                if (content != None):
+                  strId = content + "id"
+                  if (strId in data):
+                    id = data[strId]
+                
+                if (content == "tvshow"):
+                  getVideoDetails(content, id)
+                  
+            if (msg == "ApplicationStop"):
                 break
                 
+    if "result" in js:
+        if ("tvshowdetails" in js["result"]):
+          processNewTVShow(js["result"]["tvshowdetails"][0])
 
 s.close();
+unlogUser()
