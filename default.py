@@ -14,26 +14,18 @@ __useragent__    = "BetaSeries.com XBMC addon"
 __betaseries_url__ = "http://api.betaseries.com/"
 __key__            = "ed768c9dc6d3"
 
-from socket import *
 import json
 import urllib2
-import socket
 import sys
 import md5
-import xbmc
+from mySocket import BSSocket
 
 import pprint
 import difflib
 
-port = 9090
-global_id = 1;
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
 username = "xbmc"
 password = "5a1bc0ed8b9a102fe8754226f62e6c1f"
 __token__ = None
-
-id_action = {}
 
 def formatUrl(url, params=None):
     base = __betaseries_url__ + url + ".json?key=" + __key__
@@ -50,7 +42,7 @@ def formatUrl(url, params=None):
         
 def loadUrl(url):
     request = urllib2.Request(url)
-    xbmc.log("trying to load url: " + request.get_full_url(), xbmc.LOGDEBUG)
+    print "trying to load url: " + request.get_full_url()
     opener = urllib2.build_opener()
     request.add_header('User-Agent', __useragent__)
     return opener.open(request).read()
@@ -60,9 +52,9 @@ def logUser():
     data = json.read(loadUrl(formatUrl("members/auth", {"login": username, "password": password})))
     if (data["root"]["code"] == 1):
         __token__ = data["root"]["member"]["token"]
-        xbmc.log("Successfully logged in", xbmc.LOGDEBUG)
+        print "Successfully logged in"
     else:
-      xbmc.log("Failed to login. Check your login/pwd", xbmc.LOGERROR);
+      print "Failed to login. Check your login/pwd"
       
 def unlogUser():
     global __token__
@@ -70,7 +62,7 @@ def unlogUser():
     __token__ = None
     
 def getBSTVShowName(name):
-    xbmc.log("trying to get BetaSeries tvshow name for %s" % name, xbmc.LOGDEBUG)
+    print "trying to get BetaSeries tvshow name for %s" % name
     js = json.read(loadUrl(formatUrl("shows/search", {"title": name})))
     shownames = {}    
     for (key, value) in js["root"]["shows"].items():
@@ -78,7 +70,7 @@ def getBSTVShowName(name):
       
     res = difflib.get_close_matches(name, shownames.keys(), 1)
     if res:
-      xbmc.log("Closest show name: %s with url: %s" % (res[0], shownames[res[0]]), xbmc.LOGDEBUG)
+      print "Closest show name: %s with url: %s" % (res[0], shownames[res[0]])
       return shownames[res[0]]
       
     return ""
@@ -119,42 +111,26 @@ def getVideoDetails(content, id, _fields = []):
     s.send(request)
     
 def processNewTVShow(details):
-    xbmc.log("We have a new TVShow: %s" % details["title"], xbmc.LOGDEBUG)
+    print "We have a new TVShow: %s" % details["title"]
     showname = getBSTVShowName(details["title"])
     data = json.read(loadUrl(formatUrl("shows/add/" + showname)))
     if (data["root"]["code"] != 1):
-      xbmc.log("Failed to add new tv show to betaserie. Error code %s" % data["root"]["code"], xbmc.LOGERROR)
+      print "Failed to add new tv show to betaserie. Error code %s" % data["root"]["code"]
     
-s.connect(("localhost", port))
 
-postdata = '{"jsonrpc": "2.0", "method": "JSONRPC.Version", "id": "1"}'
-s.send(postdata)
-respdata = json.read(s.recv(4096))
-jsonrpc_version = respdata["result"]["version"]
-print "BetaSeries.com addon initialized; using jsonrpc version %d" % jsonrpc_version
-
-postdata = '{"jsonrpc": "2.0", "method": "JSONRPC.SetAnnouncementFlags", "params": {"system": true, "library": true}, "id": "1"}'
-s.send(postdata)
+socket = BSSocket()
+socket.connect()
 
 logUser()
 
 while (1):
-    _data = s.recv(4096)
-    if len(_data) == 4096:
-        s.setblocking(0)
-        while(1):
-            try:
-                buf = s.recv(4096)
-                _data += buf
-                if len(buf) == 4096:
-                    continue
-            except socket.error:
-                s.setblocking(1)
-                break;
-            
-    xbmc.log("got new json data: " + _data, xbmc.LOGDEBUG)
     
-    js = json.read(_data)
+    data = socket.get()
+
+    print "action: " + data.action
+    
+    js = data.data
+    
     if "method" in js:
         if (js["method"] == "Announcement") and (js["params"]["sender"] == "xbmc"):
             msg = js["params"]["message"]
@@ -199,11 +175,11 @@ while (1):
         if ("tvshowdetails" in js["result"]):
           id = str(js["id"])
           if (id in id_action):
-            xbmc.log("Found action for id %s: %s" % (id, id_action[id]), xbmc.LOGDEBUG)
+            print "Found action for id %s: %s" % (id, id_action[id])
             if (id_action[id] == "add_tvshow"):
               processNewTVShow(js["result"]["tvshowdetails"][0])
             elif (id_action[id] == "remove_tvshow"):
               print ""
 
-s.close();
+socket.close();
 unlogUser()
