@@ -38,13 +38,15 @@ class BSSocketReader(threading.Thread):
         action = self.socket.getActionForId(js['id'])
       else:
         action = "ANNOUNCEMENTS"
-        
-      print "mapped to action " + action
 
       socketData = BSSocketData()
       socketData.action = action
       socketData.data = js
-      self.q.put(socketData)
+      if ("id" in js):
+        if not self.socket.notifyId(int(js['id']), socketData):
+          self.q.put(socketData)
+      else:
+        self.q.put(socketData)
 
   def stop(self):
     self.__stopevent.set()
@@ -56,6 +58,7 @@ class BSSocket:
   __port = 9090
   __map = {1: "VERSION", 2: "PERMISSIONS"}
   __id = 3
+  __callbacks = {}
   
   def __init__(self):
     self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -71,17 +74,29 @@ class BSSocket:
                      "params": {"System": true, "Library": true}, "id": "2"}')
 
   def send(self, request):
-    request['id'] = __id;
-    setActionForId(request['id'], request['method'])
+    request["jsonrpc"] = "2.0"
+    self.setActionForId(request['id'], request['method'])
 
     formattedJson = json.write(request)
+    print "[SOCKET] Sending " + formattedJson
     self.socket.send(formattedJson)
+
+  def addCallbackForId(self, id, callback):
+    self.__callbacks[int(id)] = callback
+
+  def notifyId(self, id, data):
+    if (int(id) in self.__callbacks):
+        return self.__callbacks[int(id)](data)
+    return False
     
 
   def close(self):
     self.socket.shutdown(socket.SHUT_RDWR)
     self.socket.close()
     self.__thread.stop()
+
+  def getId(self):
+    return self.__id;
 
   def getActionForId(self, id):
     return self.__map.get(int(id), None)

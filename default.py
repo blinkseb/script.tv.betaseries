@@ -19,6 +19,7 @@ import urllib2
 import sys
 import md5
 from mySocket import BSSocket
+from XBMCLibrary import XBMCLib
 
 import pprint
 import difflib
@@ -120,66 +121,67 @@ def processNewTVShow(details):
 
 socket = BSSocket()
 socket.connect()
+lib = XBMCLib(socket)
 
-logUser()
+#logUser()
 
 while (1):
     
     data = socket.get()
 
-    print "action: " + data.action
+    print "[MAIN] action: " + data.action
     
-    js = data.data
-    
-    if "method" in js:
-        if (js["method"] == "Announcement") and (js["params"]["sender"] == "xbmc"):
-            msg = js["params"]["message"]
-            data = None
-            if "data" in js["params"]:
-                data = js["params"]["data"]
-                
-            if (msg == "UpdateVideo") and (data != None):
-                content = None
-                id = None
-                if ("content" in data):
-                  content = data["content"]
-                
-                if (content != None):
-                  strId = content + "id"
-                  if (strId in data):
-                    id = data[strId]
-                
-                if (content == "tvshow"):
-                  id_action[str(global_id)] = "add_tvshow"
-                  getVideoDetails(content, id)
-                  
-            if (msg == "RemoveVideo") and (data != None):
-                content = None
-                id = None
-                if ("content" in data):
-                  content = data["content"]
-                
-                if (content != None):
-                  strId = content + "id"
-                  if (strId in data):
-                    id = data[strId]
-                
-                if (content == "tvshow"):
-                  id_action[str(global_id)] = "remove_tvshow"
-                  getVideoDetails(content, id)
-                  
-            if (msg == "ApplicationStop"):
-                break
-                
-    if "result" in js:
-        if ("tvshowdetails" in js["result"]):
-          id = str(js["id"])
-          if (id in id_action):
-            print "Found action for id %s: %s" % (id, id_action[id])
-            if (id_action[id] == "add_tvshow"):
-              processNewTVShow(js["result"]["tvshowdetails"][0])
-            elif (id_action[id] == "remove_tvshow"):
-              print ""
+##    js = data.data
+##    
+##    if "method" in js:
+##        if (js["method"] == "Announcement") and (js["params"]["sender"] == "xbmc"):
+##            msg = js["params"]["message"]
+##            data = None
+##            if "data" in js["params"]:
+##                data = js["params"]["data"]
+##                
+##            if (msg == "UpdateVideo") and (data != None):
+##                content = None
+##                id = None
+##                if ("content" in data):
+##                  content = data["content"]
+##                
+##                if (content != None):
+##                  strId = content + "id"
+##                  if (strId in data):
+##                    id = data[strId]
+##                
+##                if (content == "tvshow"):
+##                  id_action[str(global_id)] = "add_tvshow"
+##                  getVideoDetails(content, id)
+##                  
+##            if (msg == "RemoveVideo") and (data != None):
+##                content = None
+##                id = None
+##                if ("content" in data):
+##                  content = data["content"]
+##                
+##                if (content != None):
+##                  strId = content + "id"
+##                  if (strId in data):
+##                    id = data[strId]
+##                
+##                if (content == "tvshow"):
+##                  id_action[str(global_id)] = "remove_tvshow"
+##                  getVideoDetails(content, id)
+##                  
+##            if (msg == "ApplicationStop"):
+##                break
+##                
+##    if "result" in js:
+##        if ("tvshowdetails" in js["result"]):
+##          id = str(js["id"])
+##          if (id in id_action):
+##            print "Found action for id %s: %s" % (id, id_action[id])
+##            if (id_action[id] == "add_tvshow"):
+##              processNewTVShow(js["result"]["tvshowdetails"][0])
+##            elif (id_action[id] == "remove_tvshow"):
+##              print ""
 
 socket.close();
-unlogUser()
+#unlogUser()
